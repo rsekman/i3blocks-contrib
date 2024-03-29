@@ -51,11 +51,11 @@ void get_values(char **const ifaces, int num_ifaces, time_t * const s, ulli * co
   *received = 0;
   *sent = 0;
   while (fgets(line, BUFSIZ - 1, f) != NULL) {
-    if (sscanf(line, "%[^:]: %llu %*u %*u %*u %*u %*u %*u %*u %llu", ifname, &temp_r, &temp_s) == 3) {
+    if (sscanf(line, " %[^:]: %llu %*u %*u %*u %*u %*u %*u %*u %llu", ifname, &temp_r, &temp_s) == 3) {
       int i;
       int iface_found = num_ifaces == 0;
       for (i = 0; i < num_ifaces; i++) {
-        if (strcmp(ifaces[i], ifname) != 0) {
+        if (strcmp(ifaces[i], ifname) == 0) {
           iface_found = 1;
           break;
         }
@@ -78,7 +78,7 @@ void get_values(char **const ifaces, int num_ifaces, time_t * const s, ulli * co
   }
 }
 
-void display(int const unit, int const divisor,
+void display(int const unit, int const divisor, char **const prefixes,
              double b, int const warning, int const critical)
 {
   char fmtstr[7];
@@ -99,18 +99,13 @@ void display(int const unit, int const divisor,
 
   snprintf(fmtstr, sizeof (fmtstr), "%%%d.1lf", divisor > 1000 ? 6 : 5);
 
-  if (b < divisor) {
-    printf(fmtstr, b);
-    printf(" %c/s", unit);
-  } else if (b < divisor * divisor) {
-    printf(fmtstr, b / divisor);
-    printf("K%c/s", unit);
-  } else if (b < divisor * divisor * divisor) {
-    printf(fmtstr, b / (divisor * divisor));
-    printf("M%c/s", unit);
-  } else {
-    printf(fmtstr, b / (divisor * divisor * divisor));
-    printf("G%c/s", unit);
+  int d = 1;
+  for (int i = 0; prefixes[i] != NULL; d *= divisor, i++) {
+      if (b < d*divisor) {
+        printf(fmtstr, b/d);
+        printf(" %s%c/s", prefixes[i], unit);
+        break;
+      }
   }
   printf("</span>");
 }
@@ -138,6 +133,10 @@ int main(int argc, char *argv[])
   int divisor = 1024;
   char *envvar = NULL;
   char *label = "";
+
+  char *prefixes_SI[] = { "", "K", "M", "G", 0 };
+  char *prefixes_BI[]  = { "", "Ki", "Mi", "Gi", 0 };
+  char **prefixes = prefixes_BI;
 
   envvar = getenv("USE_BITS");
   if (envvar && *envvar == '1')
@@ -167,8 +166,10 @@ int main(int argc, char *argv[])
   if (envvar)
     criticaltx = atoi(envvar);
   envvar = getenv("USE_SI");
-  if (envvar && *envvar == '1')
+  if (envvar && *envvar == '1') {
     divisor = 1000;
+    prefixes = prefixes_SI;
+  }
   envvar = getenv("LABEL");
   if (envvar)
     label = envvar;
@@ -193,6 +194,7 @@ int main(int argc, char *argv[])
       break;
     case 's':
       divisor = 1000;
+      prefixes = prefixes_SI;
       break;
     case 'h':
       usage(argv);
@@ -215,9 +217,9 @@ int main(int argc, char *argv[])
     rx = (received - received_old) / (float)(s - s_old);
     tx = (sent - sent_old) / (float)(s - s_old);
     printf("%s", label);
-    display(unit, divisor, rx, warningrx, criticalrx);
+    display(unit, divisor, prefixes, rx, warningrx, criticalrx);
     printf(" ");
-    display(unit, divisor, tx, warningtx, criticaltx);
+    display(unit, divisor, prefixes, tx, warningtx, criticaltx);
     printf("\n");
     fflush(stdout);
     s_old = s;
